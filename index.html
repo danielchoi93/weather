@@ -38,8 +38,8 @@
   .live { width: .62em; height: .62em; border-radius: 50%; background: #5DB85C; box-shadow: 0 0 0 .22em rgba(93,184,92,.25); }
   .big { font-family: var(--num); font-weight: 800; line-height: .8; font-size: min(24vh, 11vw); letter-spacing: -.01em; white-space: nowrap; }
   .big sup { font-size: .36em; vertical-align: top; position: relative; top: .1em; font-weight: 500; color: var(--muted); margin-left: .04em; }
-  .now-row { display: flex; align-items: center; justify-content: center; gap: .8vw; }
-  .now-icon { width: min(9vh, 5.5vw); height: min(9vh, 5.5vw); flex: none; }
+  .now-row { display: flex; align-items: flex-start; justify-content: center; gap: .8vw; }
+  .now-icon { width: min(9vh, 5.5vw); height: min(9vh, 5.5vw); flex: none; margin-top: calc((min(24vh, 11vw) * .8 - min(9vh, 5.5vw)) / 2); }
   .block-sub { font-size: min(3vh, 1.9vw); color: var(--muted); }
   .block-sub b { color: var(--ink); font-weight: 600; }
 
@@ -54,8 +54,12 @@
   .t-temp { display: flex; flex-direction: column; align-items: center; line-height: .85; }
   .t-temp:first-child { justify-self: end; }
   .t-temp:last-child { justify-self: start; }
-  .t-temp span { color: var(--muted); font-size: min(3.2vh, 2vw); font-weight: 600; margin-bottom: 1.2vh; }
+  .t-temp > span { color: var(--muted); font-size: min(3.2vh, 2vw); font-weight: 600; margin-bottom: 1.2vh; }
   .t-temp b { font-family: var(--num); font-weight: 800; font-size: min(28vh, 13vw); padding-left: .12em; }
+  .uv { font-style: normal; font-size: min(3vh, 1.9vw); font-weight: 700; line-height: 1; display: inline-flex; align-items: center; gap: .35em; white-space: nowrap; }
+  .t-temp .uv { margin-top: 1.6vh; }
+  .big-wrap { display: flex; flex-direction: column; align-items: center; gap: 1.6vh; }
+  .ghost { visibility: hidden; }
   .t-arrow { width: min(11vh, 6.5vw); height: auto; }
 
   .week { grid-area: week; padding: 3vh 2vw; display: flex; flex-direction: column; }
@@ -98,8 +102,8 @@ const REFRESH_MIN = 5;                  // minutes between forecast checks
 
 const URL_API = "https://api.open-meteo.com/v1/forecast"
   + `?latitude=${LAT}&longitude=${LON}`
-  + "&current=temperature_2m,apparent_temperature,weather_code,is_day"
-  + "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+  + "&current=temperature_2m,apparent_temperature,weather_code,is_day,uv_index"
+  + "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max"
   + `&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=${encodeURIComponent(TZ)}&forecast_days=7`;
 
 const CODES = {0:"Clear",1:"Mostly clear",2:"Partly cloudy",3:"Cloudy",45:"Fog",48:"Freezing fog",
@@ -193,6 +197,13 @@ async function load(){
   render();
 }
 
+// UV badge: sun outline + "UV n", colored by the standard UV index scale
+function uvLevelColor(u){ if (u<=2) return "#5DB85C"; if (u<=5) return "#EBD44A"; if (u<=7) return "#F0913A"; if (u<=10) return "#E5574A"; return "#A98BEA"; }
+function uvBadge(u, ghost){
+  if (u==null) return "";
+  return `<em class="uv${ghost?" ghost":""}" style="color:${uvLevelColor(u)}"><span>(UV ${u})</span></em>`;
+}
+
 function weekday(dateStr){ const [y,m,d]=dateStr.split("-").map(Number); return new Date(Date.UTC(y,m-1,d)).toLocaleDateString("en-US",{weekday:"short",timeZone:"UTC"}); }
 
 // Line under "Today": the kind of wet weather expected, with its chance
@@ -206,6 +217,7 @@ function todayLine(code, p){
 // Today, big: low to high
 function todayHTML(np){
   const d=data.daily; let i=d.time.indexOf(np.date); if (i<0) i=0;
+  const uvMax = d.uv_index_max && d.uv_index_max[i]!=null ? Math.round(d.uv_index_max[i]) : null;
   const tLo=d.temperature_2m_min[i], tHi=d.temperature_2m_max[i], p=d.precipitation_probability_max[i] ?? 0, code=d.weather_code?d.weather_code[i]:3;
   const [y,m,dd]=d.time[i].split("-").map(Number);
   const wd=new Date(Date.UTC(y,m-1,dd)).toLocaleDateString("en-US",{weekday:"long",timeZone:"UTC"});
@@ -213,9 +225,9 @@ function todayHTML(np){
     <div class="today-head"><svg class="today-icon" viewBox="0 0 64 64" aria-hidden="true">${iconSVG(d.weather_code?d.weather_code[i]:3,1)}</svg><b>Today</b></div>
     ${todayLine(code, p)}
     <div class="today-temps">
-      <div class="t-temp"><span>Low</span><b style="color:${tempColor(tLo)}">${Math.round(tLo)}°</b></div>
+      <div class="t-temp"><span>Low</span><b style="color:${tempColor(tLo)}"><span class="digits">${Math.round(tLo)}</span>°</b>${uvBadge(uvMax, true)}</div>
       <svg class="t-arrow" viewBox="0 0 120 40" aria-hidden="true"><defs><linearGradient id="ag" x1="0" x2="1"><stop offset="0" stop-color="${tempColor(tLo)}"/><stop offset="1" stop-color="${tempColor(tHi)}"/></linearGradient></defs><path d="M6 20H104M88 6L106 20L88 34" fill="none" stroke="url(#ag)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <div class="t-temp"><span>High</span><b style="color:${tempColor(tHi)}">${Math.round(tHi)}°</b></div>
+      <div class="t-temp"><span>High</span><b style="color:${tempColor(tHi)}"><span class="digits">${Math.round(tHi)}</span>°</b>${uvBadge(uvMax)}</div>
     </div>
   </section>`;
 }
@@ -247,6 +259,7 @@ function render(){
   if (!data){ document.body.innerHTML=`<div class="msg">Can't reach the forecast service. Check the tablet's Wi-Fi; it will retry every ${REFRESH_MIN} minutes.</div>`; return; }
 
   const c=data.current;
+  const uvNow = c.uv_index!=null ? Math.round(c.uv_index) : null;
   const tp = new Intl.DateTimeFormat("en-US",{timeZone:TZ,hour:"numeric",minute:"2-digit"}).formatToParts(new Date());
   const tv = k => (tp.find(x=>x.type===k)||{}).value || "";
   const timeHTML = `${tv("hour")}:${tv("minute")}<sup>${tv("dayPeriod")}</sup>`;
@@ -257,13 +270,13 @@ function render(){
     <section class="now panel">
       <div class="block">
         <div class="block-label"><i class="live"></i>Right now</div>
-        <div class="now-row"><div class="big" style="color:${tempColor(c.temperature_2m)}">${Math.round(c.temperature_2m)}<sup>°F</sup></div><svg class="now-icon" viewBox="0 0 64 64" aria-hidden="true">${iconSVG(c.weather_code, c.is_day)}</svg></div>
+        <div class="now-row"><div class="big-wrap"><div class="big" style="color:${tempColor(c.temperature_2m)}"><span class="digits">${Math.round(c.temperature_2m)}</span><sup>°F</sup></div>${uvBadge(uvNow)}</div><svg class="now-icon" viewBox="0 0 64 64" aria-hidden="true">${iconSVG(c.weather_code, c.is_day)}</svg></div>
         <div class="block-sub"><b>${CODES[c.weather_code]||"—"}</b>, feels like ${Math.round(c.apparent_temperature)}°</div>
       </div>
       <div class="now-divider"></div>
       <div class="block">
         <div class="block-label">${wd}</div>
-        <div class="big">${timeHTML}</div>
+        <div class="big-wrap"><div class="big">${timeHTML}</div>${uvBadge(uvNow, true)}</div>
         <div class="block-sub">${md}</div>
       </div>
     </section>
@@ -271,6 +284,7 @@ function render(){
     ${weekHTML(np, c.temperature_2m)}`;
   centerIcons();
   alignTodayHead();
+  centerUV();
 }
 
 // Line up the visible middle of the "Today" icon + word with the visible middle of the arrow
@@ -286,6 +300,17 @@ function alignTodayHead(){
     const rg=document.createRange(); rg.selectNodeContents(word); const wordRight=rg.getBoundingClientRect().right;
     head.style.transform=`translateX(${(arrowMid-(iconLeft+wordRight)/2).toFixed(1)}px)`;
   } catch(e) {}
+}
+
+function centerUV(){
+  document.querySelectorAll(".uv:not(.ghost)").forEach(b=>{
+    try {
+      const d=b.parentElement.querySelector(".digits"); if (!d) return;
+      b.style.transform="";
+      const dr=d.getBoundingClientRect(), br=b.getBoundingClientRect();
+      b.style.transform=`translateX(${((dr.left+dr.width/2)-(br.left+br.width/2)).toFixed(1)}px)`;
+    } catch(e) {}
+  });
 }
 
 function centerIcons(){
